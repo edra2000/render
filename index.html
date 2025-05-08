@@ -361,161 +361,200 @@ document.addEventListener('DOMContentLoaded', fetchFullData);
 
 // إعادة المحاولة كل دقيقة إذا فشلت
 setInterval(fetchFullData, 60000);
-    async function fetchCryptoData() {
-  // مصادر متعددة مع طبقات احتياطية
-  const API_ENDPOINTS = [
+  // 1. تهيئة المتغيرات الأساسية
+const CRYPTO_API_URL = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd';
+const FALLBACK_DATA = [{
+  id: 'bitcoin',
+  symbol: 'btc',
+  name: 'Bitcoin',
+  image: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+  current_price: 51000,
+  price_change_percentage_24h: 3.2,
+  market_cap: 1000000000000,
+  market_cap_rank: 1,
+  total_volume: 25000000000,
+  circulating_supply: 19000000,
+  max_supply: 21000000,
+  last_updated: new Date().toISOString()
+}];
+
+// 2. دالة محسنة لجلب البيانات مع ثلاث طبقات احتياطية
+async function fetchCryptoData() {
+  // طبقات الاتصال (مباشر -> CORS Proxy -> Local Proxy)
+  const connectionLayers = [
     {
-      url: 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd',
+      name: 'الاتصال المباشر',
+      url: CRYPTO_API_URL,
       options: {
-        mode: 'cors',
-        headers: {
-          'Content-Type': 'application/json',
+        headers: { 'Accept': 'application/json' }
+      }
+    },
+    {
+      name: 'CORS Anywhere',
+      url: `https://cors-anywhere.herokuapp.com/${CRYPTO_API_URL}`,
+      options: {
+        headers: { 
+          'X-Requested-With': 'XMLHttpRequest',
           'Accept': 'application/json'
         }
       }
     },
     {
-      url: 'https://cors-anywhere.herokuapp.com/https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd',
-      options: {
-        headers: {
-          'X-Requested-With': 'XMLHttpRequest'
-        }
-      }
+      name: 'Proxy محلي',
+      url: 'https://your-crypto-proxy.herokuapp.com/market',
+      options: {}
     }
   ];
 
-  // بيانات تجريبية للطوارئ
-  const FALLBACK_DATA = [{
-    id: 'bitcoin',
-    symbol: 'btc',
-    name: 'Bitcoin',
-    image: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
-    current_price: 51000,
-    price_change_percentage_24h: 3.2,
-    market_cap: 1000000000000,
-    market_cap_rank: 1,
-    total_volume: 25000000000,
-    circulating_supply: 19000000,
-    max_supply: 21000000
-  }];
-
-  for (const endpoint of API_ENDPOINTS) {
+  for (const layer of connectionLayers) {
     try {
-      const response = await fetch(endpoint.url, endpoint.options);
+      console.log(`جرب ${layer.name}...`);
+      const response = await fetch(layer.url, layer.options);
       
       if (!response.ok) continue;
       
       const data = await response.json();
-      return data;
+      if (data && data.length > 0) {
+        console.log(`نجح باستخدام ${layer.name}`);
+        return data;
+      }
     } catch (error) {
-      console.warn(`Failed with ${endpoint.url}:`, error);
+      console.warn(`فشل ${layer.name}:`, error.message);
       continue;
     }
   }
-
-  // إذا فشلت جميع المصادر
-  console.log('Using fallback data');
-  return FALLBACK_DATA;
+  
+  throw new Error('فشل جميع محاولات الاتصال');
 }
 
-// 2. دالة عرض البيانات
-function renderData(data) {
-  const container = document.getElementById('crypto-container') || document.createElement('div');
-  container.id = 'crypto-container';
-  container.innerHTML = '';
+// 3. دالة عرض البيانات المحسنة
+function renderCryptoData(data, isFallback = false) {
+  const container = document.getElementById('crypto-container') || createContainer();
+  
+  container.innerHTML = data.map(coin => `
+    <div class="crypto-card ${isFallback ? 'fallback' : ''}">
+      <img src="${coin.image}" alt="${coin.name}" 
+           onerror="this.src='https://via.placeholder.com/100?text=No+Image'">
+      <div class="coin-info">
+        <h3>${coin.name} <span>(${coin.symbol.toUpperCase()})</span></h3>
+        <p class="price">$${coin.current_price.toLocaleString()}</p>
+        <p class="change ${coin.price_change_percentage_24h >= 0 ? 'up' : 'down'}">
+          ${coin.price_change_percentage_24h >= 0 ? '+' : ''}${coin.price_change_percentage_24h.toFixed(2)}%
+        </p>
+        ${isFallback ? '<p class="warning">⚠ بيانات غير محدثة</p>' : ''}
+      </div>
+    </div>
+  `).join('');
 
-  data.forEach(coin => {
-    const coinElement = document.createElement('div');
-    coinElement.className = 'crypto-card';
-    coinElement.innerHTML = `
-      <img src="${coin.image}" alt="${coin.name}" onerror="this.src='https://via.placeholder.com/50'">
-      <h3>${coin.name} (${coin.symbol.toUpperCase()})</h3>
-      <p>السعر: $${coin.current_price.toLocaleString()}</p>
-      <p class="${coin.price_change_percentage_24h >= 0 ? 'positive' : 'negative'}">
-        التغير: ${coin.price_change_percentage_24h}%
-      </p>
-    `;
-    container.appendChild(coinElement);
-  });
-
-  if (!document.getElementById('crypto-container')) {
-    document.body.appendChild(container);
+  if (isFallback) {
+    showAlert('يتم عرض بيانات تجريبية بسبب مشكلة في الاتصال', 'warning');
   }
 }
 
-// 3. دالة معالجة الأخطاء
-function showError(message) {
-  const errorDiv = document.getElementById('error-message') || document.createElement('div');
-  errorDiv.id = 'error-message';
-  errorDiv.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    padding: 15px;
-    background: #ff6b6b;
-    color: white;
-    border-radius: 5px;
-    z-index: 1000;
-    max-width: 300px;
-  `;
-  errorDiv.innerHTML = `
-    <p>${message}</p>
-    <button onclick="this.parentElement.remove()" style="
-      background: #fff;
-      border: none;
-      color: #ff6b6b;
-      padding: 5px 10px;
-      border-radius: 3px;
-      margin-top: 10px;
-      cursor: pointer;
-    ">حسناً</button>
-  `;
-  document.body.appendChild(errorDiv);
+// 4. الدوال المساعدة
+function createContainer() {
+  const container = document.createElement('div');
+  container.id = 'crypto-container';
+  document.body.appendChild(container);
+  return container;
 }
 
-// 4. تهيئة الصفحة
-async function initPage() {
+function showAlert(message, type = 'error') {
+  const alert = document.createElement('div');
+  alert.className = `alert ${type}`;
+  alert.innerHTML = `
+    <span>${message}</span>
+    <button onclick="this.parentElement.remove()">✕</button>
+  `;
+  document.body.prepend(alert);
+  setTimeout(() => alert.remove(), 5000);
+}
+
+// 5. تهيئة التطبيق
+async function initApp() {
   try {
     const data = await fetchCryptoData();
-    renderData(data);
+    renderCryptoData(data);
   } catch (error) {
-    console.error('Final error:', error);
-    showError('حدث خطأ في جلب البيانات. يتم عرض بيانات محدثة مسبقاً');
-    const container = document.getElementById('crypto-container');
-    if (container && container.children.length === 0) {
-      renderData(FALLBACK_DATA);
-    }
+    console.error('Error:', error);
+    renderCryptoData(FALLBACK_DATA, true);
   }
 }
 
-// 5. إضافة CSS أساسي
-const style = document.createElement('style');
-style.textContent = `
-  .crypto-card {
-    border: 1px solid #ddd;
-    border-radius: 10px;
-    padding: 15px;
-    margin: 10px;
-    text-align: center;
-    background: white;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-  }
-  .positive { color: green; }
-  .negative { color: red; }
-  #crypto-container {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    gap: 15px;
-    padding: 20px;
-  }
-`;
-document.head.appendChild(style);
+// 6. إضافة الأنماط الديناميكية
+function addStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    #crypto-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+      padding: 20px;
+    }
+    .crypto-card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 15px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transition: transform 0.3s ease;
+    }
+    .crypto-card:hover {
+      transform: translateY(-5px);
+    }
+    .crypto-card.fallback {
+      border: 2px dashed #ff9800;
+    }
+    .crypto-card img {
+      width: 50px;
+      height: 50px;
+      margin-bottom: 10px;
+    }
+    .price {
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin: 5px 0;
+    }
+    .change.up { color: #4caf50; }
+    .change.down { color: #f44336; }
+    .warning {
+      color: #ff9800;
+      font-size: 0.8rem;
+      margin-top: 5px;
+    }
+    .alert {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 1000;
+      max-width: 300px;
+    }
+    .alert.error { background: #f44336; }
+    .alert.warning { background: #ff9800; }
+    .alert button {
+      background: transparent;
+      border: none;
+      color: white;
+      margin-left: 10px;
+      cursor: pointer;
+    }
+  `;
+  document.head.appendChild(style);
+}
 
-// بدء التحميل عند عرض الصفحة
-document.addEventListener('DOMContentLoaded', initPage);
-
-// تحديث البيانات كل دقيقتين
-setInterval(initPage, 120000);
+// بدء التطبيق
+document.addEventListener('DOMContentLoaded', () => {
+  addStyles();
+  initApp();
+  
+  // تحديث البيانات كل 5 دقائق
+  setInterval(initApp, 300000);
+});
   </script>
 </body>
 </html>
