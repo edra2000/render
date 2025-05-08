@@ -261,208 +261,106 @@
       // يمكن إضافة المزيد من العملات هنا
     };
 
-    async function fetchFullData() {
-      try {
-        // جلب بيانات السوق الأساسية
-        const proxyUrl = 'https://script.google.com/macros/s/AKfycbyMKT6n1jhg9fzSQDcCt9sEqABuTnZeuNktYEYnne9eBxXkb9k0r-qkGjo-NtW3U1or/exec';
-const targetUrl = 'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd';
-const marketResponse = await fetch(`${proxyUrl}?url=${encodeURIComponent(targetUrl)}`);
 
-        const marketData = await marketResponse.json();
-        
-        // جلب بيانات المجتمع لكل عملة
-        const coinsDetails = await Promise.all(
-          marketData.slice(0, 30).map(coin => 
-            fetch(`https://api.coingecko.com/api/v3/coins/${coin.id}?localization=false&tickers=false&community_data=true&developer_data=true`)
-              .then(res => res.json())
-          )
-        );
-        
-        // دمج البيانات
-        const enrichedData = marketData.map(coin => {
-          const detail = coinsDetails.find(d => d.id === coin.id) || {};
-          return {
-            ...coin,
-            community_data: detail.community_data,
-            developer_data: detail.developer_data
-          };
-        });
-        
-        renderAllSections(enrichedData);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        document.getElementById('content').innerHTML = `
-          <div style="text-align:center; color:#ff6b6b; padding:30px;">
-            <i class="fas fa-exclamation-triangle" style="font-size:48px;"></i>
-            <h3>حدث خطأ في جلب البيانات</h3>
-            <p>${error.message}</p>
-            <button onclick="location.reload()" style="margin-top:15px; padding:8px 20px; background:var(--primary); border:none; border-radius:5px; cursor:pointer;">
-              <i class="fas fa-sync-alt"></i> إعادة المحاولة
-            </button>
-          </div>
-        `;
-      }
+
+
+
+    
+   async function fetchFullData() {
+  // روابط متعددة للطلبات الاحتياطية
+  const API_SOURCES = [
+    {
+      url: 'https://api.allorigins.win/get?url=' + encodeURIComponent('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd'),
+      parser: (data) => JSON.parse(data.contents)
+    },
+    {
+      url: 'https://corsproxy.io/?' + encodeURIComponent('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd'),
+      parser: (data) => data
+    },
+    {
+      url: 'https://your-own-proxy.herokuapp.com/api/market',
+      parser: (data) => data
     }
+  ];
 
-    function renderAllSections(data) {
-      const content = document.getElementById('content');
-      content.innerHTML = '';
-      
-      // تصفية العملات المستقرة
-      const stablecoins = ['usdt', 'usdc', 'busd', 'dai', 'tusd', 'usdp', 'gusd'];
-      const filtered = data.filter(coin => !stablecoins.includes(coin.symbol.toLowerCase()));
-      
-      // إنشاء جميع الأقسام المطلوبة
-      const sections = [
-        {
-          icon: '💰',
-          title: 'أعلى 5 عملات من حيث القيمة السوقية',
-          data: [...filtered].sort((a, b) => b.market_cap - a.market_cap).slice(0, 5),
-          description: 'العملات ذات أعلى قيمة سوقية إجمالية'
-        },
-        {
-          icon: '📉',
-          title: 'أدنى 5 عملات من حيث القيمة السوقية',
-          data: [...filtered].sort((a, b) => a.market_cap - b.market_cap).slice(0, 5),
-          description: 'العملات ذات أقل قيمة سوقية إجمالية'
-        },
-        {
-          icon: '📦',
-          title: 'أعلى 5 عملات من حيث العدد المعروض',
-          data: [...filtered].sort((a, b) => b.circulating_supply - a.circulating_supply).slice(0, 5),
-          description: 'العملات ذات أعلى كمية متداولة في السوق'
-        },
-        {
-          icon: '🧮',
-          title: 'أدنى 5 عملات من حيث العدد المعروض',
-          data: [...filtered].sort((a, b) => a.circulating_supply - b.circulating_supply).slice(0, 5),
-          description: 'العملات ذات أقل كمية متداولة في السوق'
-        },
-        {
-          icon: '👥',
-          title: 'أعلى 5 عملات من حيث النشاط المجتمعي',
-          data: [...filtered].sort((a, b) => 
-            (b.community_data?.twitter_followers || 0) - (a.community_data?.twitter_followers || 0)
-          ).slice(0, 5),
-          description: 'العملات ذات أكبر متابعين على وسائل التواصل'
+  // بيانات تجريبية للطوارئ
+  const FALLBACK_DATA = [{
+    id: 'bitcoin',
+    symbol: 'btc',
+    name: 'Bitcoin',
+    image: 'https://assets.coingecko.com/coins/images/1/large/bitcoin.png',
+    current_price: 50000,
+    price_change_percentage_24h: 2.5,
+    market_cap: 950000000000,
+    market_cap_rank: 1,
+    total_volume: 30000000000,
+    circulating_supply: 19000000,
+    max_supply: 21000000
+  }];
+
+  let lastError = null;
+
+  for (const source of API_SOURCES) {
+    try {
+      const response = await fetch(source.url, {
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
         }
-      ];
-      
-      sections.forEach(section => {
-        const sectionHTML = `
-          <div class="section">
-            <h2 class="section-title">
-              <span>${section.icon}</span>
-              <span>${section.title}</span>
-            </h2>
-            <p style="color:#aaa; margin-top:-15px; margin-bottom:15px; padding-right:20px;">
-              ${section.description}
-            </p>
-            <div class="grid">
-              ${section.data.map(coin => createCoinCard(coin)).join('')}
-            </div>
-          </div>
-        `;
-        content.insertAdjacentHTML('beforeend', sectionHTML);
       });
-      
-      // تحريك أشرطة التقدم بعد تحميل الصفحة
-      setTimeout(() => {
-        document.querySelectorAll('.progress-fill').forEach(bar => {
-          const width = bar.parentElement.getAttribute('data-width');
-          bar.style.width = width + '%';
-        });
-      }, 300);
-    }
 
-    function createCoinCard(coin) {
-      // حساب نسبة التغير اليومي
-      const priceChange = coin.price_change_percentage_24h || 0;
-      const priceChangeClass = priceChange >= 0 ? 'positive' : 'negative';
-      const priceChangeText = priceChange >= 0 ? `+${priceChange.toFixed(2)}%` : `${priceChange.toFixed(2)}%`;
-      
-      // بيانات المجتمع
-      const communityScore = coin.community_data?.facebook_likes 
-        ? Math.min(100, Math.floor((coin.community_data.facebook_likes / 10000) * 10))
-        : Math.floor(Math.random() * 30) + 50;
-      
-      const twitterFollowers = coin.community_data?.twitter_followers || Math.floor(Math.random() * 500000);
-      const redditSubscribers = coin.community_data?.subreddit_subscribers || Math.floor(Math.random() * 300000);
-      
-      // روابط الوسائط الاجتماعية
-      const socialLinks = SOCIAL_LINKS[coin.id] || {
-        twitter: `https://twitter.com/search?q=${coin.name}`,
-        reddit: `https://reddit.com/search?q=${coin.name}`,
-        telegram: '#',
-        website: coin.links?.homepage?.[0] || '#'
-      };
-      
-      return `
-        <div class="card">
-          <div class="card-header">
-            <div class="coin-info">
-              <img src="${coin.image}" class="coin-image" alt="${coin.symbol}">
-              <div class="coin-name">${coin.symbol.toUpperCase()}</div>
-            </div>
-            <div class="coin-rank">#${coin.market_cap_rank}</div>
-          </div>
-          
-          <div class="coin-price">
-            السعر: $${coin.current_price.toLocaleString()}
-            <span class="price-change ${priceChangeClass}">${priceChangeText}</span>
-          </div>
-          
-          <div class="market-data">
-            <div class="data-item">
-              <div class="data-label">القيمة السوقية</div>
-              <div class="data-value">$${(coin.market_cap / 1000000000).toFixed(2)}B</div>
-            </div>
-            <div class="data-item">
-              <div class="data-label">حجم التداول (24h)</div>
-              <div class="data-value">$${(coin.total_volume / 1000000).toFixed(2)}M</div>
-            </div>
-            <div class="data-item">
-              <div class="data-label">العدد المعروض</div>
-              <div class="data-value">${(coin.circulating_supply / 1000000).toFixed(2)}M</div>
-            </div>
-            <div class="data-item">
-              <div class="data-label">الإجمالي المتاح</div>
-              <div class="data-value">${coin.max_supply ? (coin.max_supply / 1000000).toFixed(2)+'M' : '∞'}</div>
-            </div>
-          </div>
-          
-          <div class="community-section">
-            <div class="progress-container">
-              <div class="progress-label">
-                <span>قوة المجتمع</span>
-                <span>${communityScore}%</span>
-              </div>
-              <div class="progress-bar" data-width="${communityScore}">
-                <div class="progress-fill"></div>
-              </div>
-            </div>
-            
-            <div class="social-links">
-              <a href="${socialLinks.twitter}" target="_blank" class="social-link" title="تويتر">
-                <i class="fab fa-twitter"></i>
-              </a>
-              <a href="${socialLinks.reddit}" target="_blank" class="social-link" title="ريديت">
-                <i class="fab fa-reddit"></i>
-              </a>
-              <a href="${socialLinks.telegram}" target="_blank" class="social-link" title="تليجرام">
-                <i class="fab fa-telegram"></i>
-              </a>
-              <a href="${socialLinks.website}" target="_blank" class="social-link" title="الموقع الرسمي">
-                <i class="fas fa-globe"></i>
-              </a>
-            </div>
-          </div>
-        </div>
-      `;
-    }
+      if (!response.ok) continue;
 
-    // بدء جلب البيانات عند تحميل الصفحة
-    document.addEventListener('DOMContentLoaded', fetchFullData);
+      const data = await response.json();
+      const parsedData = source.parser(data);
+      
+      if (parsedData && parsedData.length > 0) {
+        return renderData(parsedData);
+      }
+    } catch (error) {
+      lastError = error;
+      console.warn(`Failed with ${source.url}:`, error);
+      continue;
+    }
+  }
+
+  // إذا فشلت جميع المصادر
+  console.error('All sources failed, using fallback data', lastError);
+  renderData(FALLBACK_DATA);
+  showError('يتم عرض بيانات تجريبية بسبب مشكلة في الاتصال');
+}
+
+function showError(message) {
+  const errorElement = document.createElement('div');
+  errorElement.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 15px;
+    background: #ff6b6b;
+    color: white;
+    border-radius: 5px;
+    z-index: 1000;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.2);
+  `;
+  errorElement.innerHTML = `
+    <i class="fas fa-exclamation-triangle"></i> ${message}
+    <button onclick="this.parentElement.remove()" style="
+      background: transparent;
+      border: none;
+      color: white;
+      margin-left: 10px;
+      cursor: pointer;
+    ">×</button>
+  `;
+  document.body.appendChild(errorElement);
+}
+
+// بدء جلب البيانات عند تحميل الصفحة
+document.addEventListener('DOMContentLoaded', fetchFullData);
+
+// إعادة المحاولة كل دقيقة إذا فشلت
+setInterval(fetchFullData, 60000);
   </script>
 </body>
 </html>
