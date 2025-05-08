@@ -1,10 +1,9 @@
 {
   "name": "crypto-market-dashboard",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "render/node/server.js",
   "scripts": {
-    "start": ""main": "render/node/server.js",
-"
+    "start": "node render/node/server.js"
   },
   "dependencies": {
     "express": "^4.17.1",
