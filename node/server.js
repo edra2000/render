@@ -1,16 +1,20 @@
 const express = require('express');
-const path = require('path');
+const fetch = require('node-fetch');
 const app = express();
-const PORT = process.env.PORT || 3000;
+const port = process.env.PORT || 3000;
 
-// خدمة الملفات الثابتة (index.html, script.js, style.css)
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public')); // عرض ملفات static مثل HTML و CSS و JS
 
-// الرد على أي طلب غير معروف بإرسال index.html
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/index.html'));
+app.get('/api/market', async (req, res) => {
+  try {
+    const response = await fetch('https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd');
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    res.status(500).send('Error fetching market data');
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+app.listen(port, () => {
+  console.log(`Server running on port ${port}`);
 });
