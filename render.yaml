@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: crypto-api-proxy
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm start
+    env: node
+    envVars:
+      - key: PORT
+        value: 10000
