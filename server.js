@@ -39,6 +39,9 @@ app.get('/api/market', async (req, res) => {
     });
   }
 });
+app.get('/', (req, res) => {
+  res.send('🚀 API شغالة! استخدم /api/market للحصول على البيانات.');
+});
 
 // Health check endpoint
 app.get('/health', (req, res) => {
